@@ -1,0 +1,5 @@
+name = PBS Media Manager Queue Unpublished Video
+description = Queues an unpublished Media Manager video for publishing when it becomes available from the API
+core = 7.x
+dependencies[] = pbs_media_manager_player
+package = Media

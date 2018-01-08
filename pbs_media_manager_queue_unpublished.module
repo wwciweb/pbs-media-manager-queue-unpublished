@@ -1,0 +1,67 @@
+<?php
+
+/**
+ * Implements hook_help().
+ *
+ * Displays help and module information.
+ *
+ * @param path
+ *   Which path of the site we're using to display help
+ * @param arg
+ *   Array that holds the current path as returned from arg() function
+ */
+function pbs_media_manager_queue_unpublished_help($path, $arg) {
+  switch ($path) {
+    case "admin/help#pbs_media_manager_queue_unpublished":
+      return t("Registers a Drupal cron task that attempts to save video data from the Media Manager API for nodes saved with unpublished Media Manager assets");
+      break;
+  }
+}
+
+/**
+ * Implements hook_cron().
+ *
+ */
+function pbs_media_manager_queue_unpublished_cron() {
+  //get the most recently created nodes that have MM video URLs but haven't received data from the MM API yet
+  $results = db_query("SELECT node.nid, field_data_field_pbs_mm_video.entity_id, field_data_field_pbs_mm_video.field_pbs_mm_video_asset_id, field_data_field_pbs_mm_video.field_pbs_mm_video_url
+    FROM node
+    INNER JOIN field_data_field_pbs_mm_video ON node.nid = field_data_field_pbs_mm_video.entity_id
+    WHERE field_data_field_pbs_mm_video.field_pbs_mm_video_asset_id IS NULL");
+
+  foreach ($results as $record) {
+    $should_save_node = TRUE;
+    $entity = node_load($record->nid);
+    $items = array(
+      array(
+        'url' => $record->field_pbs_mm_video_url,
+        'original_url' => $record->field_pbs_mm_video_url
+      )
+    );
+
+    //clear Drupal messages since we'll be checking for new errors
+    drupal_get_messages('warning', TRUE);
+
+    //manually call PBS Media Manager Field presave hook to poll the MM API
+    pbs_media_manager_player_field_presave('node', $entity, null, array('label' => 'PBS Media Manager API Video'), 'und', $items);
+
+    $messages = drupal_get_messages('warning');
+
+    foreach ($messages as $message) {
+      foreach($message as $value) {
+        if (preg_match("/.+PBS Media Manager API Video.+$entity->title/", $value) === 1) {
+          //PBS Media Manager Field set an API error, so skip saving this node
+          $should_save_node = FALSE;
+        }
+      }
+    };
+
+    if ($should_save_node) {
+      watchdog('PBS Media Manager Queue Unpublished', "Saving data from Media Manager API on node ID $record->nid");
+      node_save($entity);
+      return;
+    }
+
+    watchdog('PBS Media Manager Queue Unpublished', "The Media Manager API returned no data for node ID $record->nid");
+  }
+}
