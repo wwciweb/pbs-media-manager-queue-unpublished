@@ -23,14 +23,16 @@ function pbs_media_manager_queue_unpublished_help($path, $arg) {
  *
  */
 function pbs_media_manager_queue_unpublished_cron() {
-  //get the most recently created nodes that have MM video URLs but haven't received data from the MM API yet
+  //get nodes that have valid MM video URLs/slugs but haven't received data from the MM API yet
   $results = db_query("SELECT node.nid, field_data_field_pbs_mm_video.entity_id, field_data_field_pbs_mm_video.field_pbs_mm_video_asset_id, field_data_field_pbs_mm_video.field_pbs_mm_video_url
     FROM node
     INNER JOIN field_data_field_pbs_mm_video ON node.nid = field_data_field_pbs_mm_video.entity_id
-    WHERE field_data_field_pbs_mm_video.field_pbs_mm_video_asset_id IS NULL");
+    WHERE field_data_field_pbs_mm_video.field_pbs_mm_video_asset_id IS NULL AND field_data_field_pbs_mm_video.field_pbs_mm_video_url != 'https://www.pbs.org/video/'");
 
   foreach ($results as $record) {
     $should_save_node = TRUE;
+
+    //prepare data that pbs_media_manager_player_field_presave expects
     $entity = node_load($record->nid);
     $items = array(
       array(
@@ -49,7 +51,7 @@ function pbs_media_manager_queue_unpublished_cron() {
 
     foreach ($messages as $message) {
       foreach($message as $value) {
-        if (preg_match("/.+PBS Media Manager API Video.+$entity->title/", $value) === 1) {
+        if (preg_match("/.+PBS Media Manager API Video.+$entity->title/", $value)) {
           //PBS Media Manager Field set an API error, so skip saving this node
           $should_save_node = FALSE;
         }
